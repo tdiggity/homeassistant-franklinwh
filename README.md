@@ -13,8 +13,7 @@ Everything from the original still works, including YAML setup.
 
 > ⚠️ This project is unofficial and not affiliated with FranklinWH. The aGate's local protocol is undocumented, so a FranklinWH firmware update could change or close it. If that happens, the integration falls back to the cloud automatically.
 
-<!-- Screenshot: the FranklinWH aGate device page, showing its sensors.
-     ![FranklinWH device page](.github/screenshots/device-page.png) -->
+<p align="center"><img src=".github/screenshots/device-page.png" alt="The FranklinWH aGate device page with all its sensors and the Data Source sensor reading local" width="600"></p>
 
 ---
 
@@ -101,15 +100,11 @@ If you previously installed richo's version through HACS, remove it in HACS firs
 | Keep showing the last good data when reads fail | Recommended. Smooths graphs when a read fails. |
 | Update interval | Seconds between updates. Default 30. |
 
-<!-- Screenshot: the setup form.
-     ![FranklinWH setup form](.github/screenshots/setup-form.png) -->
-
 Before saving, the form checks that the aGate answers at the IP you gave and that the FranklinWH cloud accepts your login. If the cloud happens to be down but the aGate answers, setup still goes ahead.
 
 To change the aGate IP or other settings later, open the integration and click **Configure**.
 
-<!-- Screenshot: the Configure (options) dialog.
-     ![FranklinWH options](.github/screenshots/options.png) -->
+<p align="center"><img src=".github/screenshots/options.png" alt="The FranklinWH options dialog with the aGate IP, port, stale-data and update interval settings" width="600"></p>
 
 ### Moving from YAML to UI setup
 

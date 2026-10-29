@@ -57,6 +57,10 @@ def _num(pf: dict[str, Any], key: str, scale: float = 1.0) -> float | None:
         return None
 
 
+def _round(value: float | None, digits: int) -> float | None:
+    return None if value is None else round(value, digits)
+
+
 def grid_status_from_local(pf: dict[str, Any]) -> franklinwh.GridStatus:
     """Map the local offgridreason to a GridStatus."""
     reason = pf.get("offgridreason")
@@ -95,7 +99,8 @@ def stats_from_local(
             battery_use=_num(pf, "p_fhp", kw),
             grid_use=_num(pf, "p_uti", kw),
             home_load=_num(pf, "p_load", kw),
-            battery_soc=_num(pf, "soc"),
+            # The aGate reports SOC at full float precision (68.3684158325195).
+            battery_soc=_round(_num(pf, "soc"), 1),
             switch_1_load=sw.get("SW1ExpPower"),
             switch_2_load=sw.get("SW2ExpPower"),
             v2l_use=sw.get("CarSWPower"),
