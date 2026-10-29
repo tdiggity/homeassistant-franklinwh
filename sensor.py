@@ -17,7 +17,9 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
+    CONF_HOST,
     CONF_ID,
+    CONF_PORT,
     CONF_PASSWORD,
     CONF_USERNAME,
     MAJOR_VERSION as HASS_MAJOR_VERSION,
@@ -29,6 +31,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.helpers.update_coordinator import (
@@ -37,9 +40,14 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
+from .local import DEFAULT_LOCAL_PORT, LOCAL_TIMEOUT, read_power_flow, stats_from_local
+
 _LOGGER = logging.getLogger(__name__)
 DEFAULT_UPDATE_INTERVAL = 30
 FETCH_TIMEOUT = 30
+# The smart-circuit request rides alongside a local read; keep it short so a
+# cloud outage doesn't hold up the local data for the full FETCH_TIMEOUT.
+SWITCH_USAGE_TIMEOUT = 10
 
 PLATFORM_SCHEMA = SENSOR_PLATFORM_SCHEMA.extend(
     {
@@ -52,6 +60,11 @@ PLATFORM_SCHEMA = SENSOR_PLATFORM_SCHEMA.extend(
             "update_interval", default=DEFAULT_UPDATE_INTERVAL
         ): cv.time_period,
         vol.Optional("tolerate_stale_data", default=False): cv.boolean,
+        # aGate LAN address. When set, live data is read from the aGate
+        # directly and the cloud is only used for smart-circuit/V2L figures
+        # (and as a fallback if the aGate can't be reached).
+        vol.Optional(CONF_HOST): cv.string,
+        vol.Optional(CONF_PORT, default=DEFAULT_LOCAL_PORT): cv.port,
     }
 )
 
@@ -126,8 +139,50 @@ async def async_setup_platform(
         client = await hass.async_add_executor_job(franklinwh.Client, fetcher, gateway)
 
     cache = StaleDataCache()
+    local_host: str | None = config.get(CONF_HOST)
+    local_port: int = config[CONF_PORT]
+    source = DataSource()
+
+    async def _cloud_switch_usage() -> dict | None:
+        """Smart-circuit/V2L figures from the cloud; None if unavailable."""
+        switch_usage = getattr(client, "_switch_usage", None)
+        if switch_usage is None:
+            return None
+        try:
+            async with asyncio.timeout(SWITCH_USAGE_TIMEOUT):
+                return await switch_usage()
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.debug("FranklinWH cloud switch usage unavailable: %s", e)
+            return None
+
+    async def _local_stats() -> franklinwh.Stats | None:
+        """Read the aGate directly; None if it can't be reached."""
+        local_task = hass.async_add_executor_job(
+            read_power_flow, local_host, local_port, LOCAL_TIMEOUT
+        )
+        switch_task = _cloud_switch_usage()
+        try:
+            async with asyncio.timeout(LOCAL_TIMEOUT + 5):
+                power_flow, switch_usage = await asyncio.gather(local_task, switch_task)
+            return stats_from_local(power_flow, switch_usage)
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.warning(
+                "Error reading FranklinWH aGate locally at %s:%s, falling back to cloud: %s",
+                local_host,
+                local_port,
+                e,
+            )
+            return None
 
     async def _update_data() -> franklinwh.Stats:
+        if local_host:
+            data = await _local_stats()
+            if data is not None:
+                _LOGGER.debug("Fetched latest data from FranklinWH aGate locally: %s", data)
+                source.set("local")
+                cache.store(data)
+                return data
+
         max_retries = 3
         retry_delay = 2  # seconds
 
@@ -179,6 +234,7 @@ async def async_setup_platform(
                     )
                 else:
                     _LOGGER.debug("Fetched latest data from FranklinWH: %s", data)
+                source.set("cloud")
                 cache.store(data)
                 return data
 
@@ -187,6 +243,7 @@ async def async_setup_platform(
         )
 
         if config["tolerate_stale_data"] and cache.is_populated():
+            source.set("stale")
             return cache.data()
 
         raise UpdateFailed(
@@ -228,8 +285,21 @@ async def async_setup_platform(
             V2LUseSensor(coordinator, prefix, unique_id),
             V2LExportSensor(coordinator, prefix, unique_id),
             V2LImportSensor(coordinator, prefix, unique_id),
+            DataSourceSensor(coordinator, prefix, unique_id, source),
         ]
     )
+
+
+class DataSource:
+    """Where the latest data came from: local, cloud or stale."""
+
+    def __init__(self) -> None:
+        """Nothing fetched yet."""
+        self.value: str | None = None
+
+    def set(self, value: str) -> None:
+        """Record the source of the latest data."""
+        self.value = value
 
 
 class FranklinSensor(
@@ -607,3 +677,22 @@ class V2LImportSensor(FranklinSensor):
     def native_value(self):
         """Value."""
         return self.coordinator.data.totals.v2l_import
+
+
+class DataSourceSensor(FranklinSensor):
+    """Shows whether the latest data came from the aGate, the cloud or the cache."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["local", "cloud", "stale"]
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:lan-connect"
+
+    def __init__(self, coordinator, prefix, unique_id, source: DataSource) -> None:
+        """Initializer."""
+        super().__init__(coordinator, prefix, unique_id, "_data_source")
+        self._source = source
+
+    @property
+    def native_value(self):
+        """Value."""
+        return self._source.value
