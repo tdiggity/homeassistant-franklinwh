@@ -25,6 +25,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 import logging
+from .device import gateway_device_info
 _LOGGER = logging.getLogger(__name__)
 DEFAULT_UPDATE_INTERVAL = 30
 
@@ -114,8 +115,9 @@ class SmartCircuitSwitch(CoordinatorEntity, SwitchEntity):
         self.client = client
         self.coordinator = coordinator
         if unique_id:
-            self._attr_has_entity_name = True
+            self._attr_has_entity_name = False
             self._attr_unique_id = unique_id + "_" + name
+            self._attr_device_info = gateway_device_info(unique_id, prefix)
 
     @property
     def available(self) -> bool:

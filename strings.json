@@ -1,0 +1,52 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "FranklinWH",
+        "description": "Your FranklinWH app login and the gateway serial number (FranklinWH app: Settings, Device Info, SN).",
+        "data": {
+          "username": "Email",
+          "password": "Password",
+          "id": "Gateway serial number",
+          "host": "aGate IP address (optional)",
+          "port": "aGate local port",
+          "tolerate_stale_data": "Keep showing the last good data when reads fail",
+          "update_interval": "Update interval (seconds)"
+        },
+        "data_description": {
+          "host": "Reads live data straight from the aGate on your network. Leave blank to use the cloud only.",
+          "port": "Leave at 9000 unless you know otherwise."
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "The FranklinWH cloud rejected that email or password.",
+      "account_locked": "The FranklinWH account is locked. Unlock it in the FranklinWH app and try again.",
+      "cannot_connect": "Couldn't reach the FranklinWH cloud, and there is no working aGate IP to fall back on.",
+      "cannot_connect_local": "No answer from the aGate at this address. Check the IP and that it's on your network."
+    },
+    "abort": {
+      "already_configured": "This gateway is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "FranklinWH options",
+        "data": {
+          "host": "aGate IP address (optional)",
+          "port": "aGate local port",
+          "tolerate_stale_data": "Keep showing the last good data when reads fail",
+          "update_interval": "Update interval (seconds)"
+        },
+        "data_description": {
+          "host": "Reads live data straight from the aGate on your network. Leave blank to use the cloud only.",
+          "port": "Leave at 9000 unless you know otherwise."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect_local": "No answer from the aGate at this address. Check the IP and that it's on your network."
+    }
+  }
+}

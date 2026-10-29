@@ -29,6 +29,7 @@ from homeassistant.const import (
     UnitOfPower,
     __short_version__,
 )
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import EntityCategory
@@ -40,6 +41,7 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
+from .device import gateway_device_info
 from .local import DEFAULT_LOCAL_PORT, LOCAL_TIMEOUT, read_power_flow, stats_from_local
 
 _LOGGER = logging.getLogger(__name__)
@@ -103,7 +105,41 @@ async def async_setup_platform(
     async_add_entities: AddEntitiesCallback,
     discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
-    """Set up the sensor platform."""
+    """Set up the sensor platform from YAML."""
+    await _async_setup(hass, config, async_add_entities)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up the sensor platform from a UI config entry."""
+    data = {**entry.data, **entry.options}
+    config = {
+        CONF_USERNAME: data[CONF_USERNAME],
+        CONF_PASSWORD: data[CONF_PASSWORD],
+        CONF_ID: data[CONF_ID],
+        CONF_PORT: data.get(CONF_PORT, DEFAULT_LOCAL_PORT),
+        # Always keyed by serial, so entities get unique IDs and a device.
+        "use_sn": True,
+        "prefix": "FranklinWH",
+        "update_interval": timedelta(
+            seconds=data.get("update_interval", DEFAULT_UPDATE_INTERVAL)
+        ),
+        "tolerate_stale_data": data.get("tolerate_stale_data", True),
+    }
+    if data.get(CONF_HOST):
+        config[CONF_HOST] = data[CONF_HOST]
+    await _async_setup(hass, config, async_add_entities)
+
+
+async def _async_setup(
+    hass: HomeAssistant,
+    config: ConfigType,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Shared setup for YAML and UI configuration."""
     username: str = config[CONF_USERNAME]
     password: str = config[CONF_PASSWORD]
     gateway: str = config[CONF_ID]
@@ -312,8 +348,11 @@ class FranklinSensor(
         super().__init__(coordinator)
         self._attr_name = prefix + " " + unique_id_suffix.replace("_", " ").title()
         if unique_id_suffix and unique_id:
-            self._attr_has_entity_name = True
+            # Names already carry the prefix, so don't let HA prepend the
+            # device name too; this keeps existing entity IDs unchanged.
+            self._attr_has_entity_name = False
             self._attr_unique_id = unique_id + unique_id_suffix
+            self._attr_device_info = gateway_device_info(unique_id, prefix)
 
     @property
     def available(self) -> bool:
